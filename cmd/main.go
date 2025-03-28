@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"http-app/handlers"
+	"http-app/handler"
+	"http-app/router"
 	"http-app/storage"
 	"http-app/storage/repository"
 	"log"
@@ -16,7 +17,7 @@ import (
 func startServer(wg *sync.WaitGroup, server *http.Server) {
 	log.Println("Start listen server...")
 	defer wg.Done()
-	if err := server.ListenAndServe(); err != nil {
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Println(err)
 	}
 	log.Println("End listen server...")
@@ -33,18 +34,12 @@ func shutdownServer(wg *sync.WaitGroup, server *http.Server) {
 	defer log.Println("Shutdown server...")
 	defer stop()
 
-	if err := server.Shutdown(context.Background()); err != nil {
+	if err := server.Shutdown(context.Background()); err != nil && err != http.ErrServerClosed {
 		log.Println(err)
 	}
 }
 
 func main() {
-	serverMux := http.NewServeMux()
-
-	server := &http.Server{
-		Addr:    ":8080",
-		Handler: serverMux,
-	}
 
 	wg := new(sync.WaitGroup)
 
@@ -55,10 +50,16 @@ func main() {
 	accRepository := repository.NewAccountRepository(dbConnection)
 
 	// Create handler and inject repository
-	accHandler := handlers.NewAccountHandler(accRepository)
+	accHandler := handler.NewAccountHandler(accRepository)
 
-	// Set url for specific handler
-	serverMux.HandleFunc("/accounts", accHandler.GetAccounts)
+	// Set router
+	r := router.NewRouter(accHandler)
+	muxRouter := r.Routes()
+
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: muxRouter,
+	}
 
 	wg.Add(2)
 
